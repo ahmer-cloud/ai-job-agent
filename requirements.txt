@@ -2,3 +2,6 @@ streamlit
 groq
 pdfplumber
 python-docx
+pymupdf
+pytesseract
+pillow

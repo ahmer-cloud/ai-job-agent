@@ -1,7 +1,10 @@
 import streamlit as st
-import pdfplumber
+import fitz  # PyMuPDF
 import docx
 import json
+import io
+from PIL import Image
+import pytesseract
 from groq import Groq
 
 st.set_page_config(page_title="AI Job Applicant Agent", page_icon="🧑‍💼")
@@ -10,8 +13,6 @@ st.title("🧑‍💼 AI Job Applicant Agent")
 st.write("Upload your resume and paste a job description. The AI will check your ATS score and missing skills.")
 
 # ---- Get API key ----
-# For local testing, put your key directly below (only for testing, remove before pushing to GitHub!)
-# For deployment, use Streamlit secrets instead (see instructions).
 try:
     api_key = st.secrets["GROQ_API_KEY"]
 except Exception:
@@ -22,20 +23,80 @@ if api_key:
     client = Groq(api_key=api_key)
 
 
-def extract_text_from_pdf(file):
-    text = ""
-    with pdfplumber.open(file) as pdf:
-        for page in pdf.pages:
-            page_text = page.extract_text()
-            if page_text:
-                text += page_text + "\n"
-    return text
+def ocr_image(image: Image.Image) -> str:
+    """Run OCR on a PIL image and return extracted text."""
+    try:
+        return pytesseract.image_to_string(image)
+    except Exception:
+        return ""
 
 
-def extract_text_from_docx(file):
-    document = docx.Document(file)
-    text = "\n".join([para.text for para in document.paragraphs])
-    return text
+def extract_text_from_pdf(file_bytes: bytes) -> str:
+    """Extract text from a PDF. Falls back to OCR per page if no selectable text is found."""
+    text_parts = []
+    pdf = fitz.open(stream=file_bytes, filetype="pdf")
+
+    for page in pdf:
+        page_text = page.get_text().strip()
+        if page_text:
+            text_parts.append(page_text)
+        else:
+            # No selectable text on this page -> likely scanned/image. Run OCR.
+            pix = page.get_pixmap(dpi=200)
+            img_bytes = pix.tobytes("png")
+            image = Image.open(io.BytesIO(img_bytes))
+            ocr_text = ocr_image(image)
+            if ocr_text.strip():
+                text_parts.append(ocr_text)
+
+    pdf.close()
+    return "\n".join(text_parts)
+
+
+def extract_text_from_docx(file_bytes: bytes) -> str:
+    """Extract text from a DOCX: paragraphs, tables, and any embedded images (via OCR)."""
+    document = docx.Document(io.BytesIO(file_bytes))
+    parts = [para.text for para in document.paragraphs if para.text.strip()]
+
+    for table in document.tables:
+        for row in table.rows:
+            for cell in row.cells:
+                if cell.text.strip():
+                    parts.append(cell.text)
+
+    # Extract text from any images embedded in the docx via OCR
+    try:
+        for rel in document.part.rels.values():
+            if "image" in rel.reltype:
+                image_bytes = rel.target_part.blob
+                image = Image.open(io.BytesIO(image_bytes))
+                ocr_text = ocr_image(image)
+                if ocr_text.strip():
+                    parts.append(ocr_text)
+    except Exception:
+        pass
+
+    return "\n".join(parts)
+
+
+def extract_text_from_image(file_bytes: bytes) -> str:
+    """Extract text directly from an uploaded image file via OCR."""
+    image = Image.open(io.BytesIO(file_bytes))
+    return ocr_image(image)
+
+
+def extract_resume_text(uploaded_file) -> str:
+    file_bytes = uploaded_file.read()
+    name = uploaded_file.name.lower()
+
+    if name.endswith(".pdf"):
+        return extract_text_from_pdf(file_bytes)
+    elif name.endswith(".docx"):
+        return extract_text_from_docx(file_bytes)
+    elif name.endswith((".png", ".jpg", ".jpeg", ".webp")):
+        return extract_text_from_image(file_bytes)
+    else:
+        return ""
 
 
 def analyze_resume(resume_text, job_description):
@@ -67,7 +128,6 @@ JOB DESCRIPTION:
 
     raw_output = response.choices[0].message.content.strip()
 
-    # Clean up in case the model wraps JSON in ```json ... ```
     if raw_output.startswith("```"):
         raw_output = raw_output.strip("`")
         if raw_output.startswith("json"):
@@ -78,7 +138,10 @@ JOB DESCRIPTION:
 
 
 # ---- UI ----
-uploaded_file = st.file_uploader("Upload your Resume (PDF or DOCX)", type=["pdf", "docx"])
+uploaded_file = st.file_uploader(
+    "Upload your Resume (PDF, DOCX, or Image)",
+    type=["pdf", "docx", "png", "jpg", "jpeg", "webp"]
+)
 job_description = st.text_area("Paste the Job Description here", height=250)
 
 if st.button("Analyze Resume"):
@@ -89,17 +152,15 @@ if st.button("Analyze Resume"):
     elif not job_description.strip():
         st.error("Please paste a job description.")
     else:
-        with st.spinner("Analyzing your resume..."):
+        with st.spinner("Reading your resume (this may take a moment for scanned files)..."):
             try:
-                if uploaded_file.name.endswith(".pdf"):
-                    resume_text = extract_text_from_pdf(uploaded_file)
-                else:
-                    resume_text = extract_text_from_docx(uploaded_file)
+                resume_text = extract_resume_text(uploaded_file)
 
                 if not resume_text.strip():
-                    st.error("Could not extract text from the resume. Try a different file.")
+                    st.error("Could not extract any text from this file. Try a clearer scan or a different file.")
                 else:
-                    result = analyze_resume(resume_text, job_description)
+                    with st.spinner("Analyzing your resume..."):
+                        result = analyze_resume(resume_text, job_description)
 
                     st.subheader("📊 ATS Score")
                     st.progress(min(max(int(result["ats_score"]), 0), 100) / 100)
