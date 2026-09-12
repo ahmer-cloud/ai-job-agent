@@ -14,20 +14,62 @@ from firebase_admin import credentials, firestore
 
 st.set_page_config(page_title="AI Job Applicant Agent", page_icon="🧑‍💼", layout="centered")
 
+# ---------------- Session State (theme must be set before CSS) ----------------
+if "theme" not in st.session_state:
+    st.session_state.theme = "dark"
+
 # ---------------- Custom Styling ----------------
-st.markdown("""
+if st.session_state.theme == "dark":
+    bg_color = "#0e1117"
+    text_color = "#f0f0f0"
+    card_bg = "#1a1d24"
+    border_color = "#3a3d46"
+else:
+    bg_color = "#ffffff"
+    text_color = "#1a1a1a"
+    card_bg = "#f5f5f7"
+    border_color = "#d0d0d5"
+
+st.markdown(f"""
 <style>
-    .stApp { background-color: #0e1117; }
-    h1, h2, h3 { font-weight: 700; }
-    .score-card {
+    @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700;800&display=swap');
+
+    html, body, [class*="css"] {{ font-family: 'Poppins', sans-serif; }}
+
+    .stApp {{ background-color: {bg_color}; color: {text_color}; }}
+    h1, h2, h3, p, span, label, div {{ color: {text_color}; }}
+    h1, h2, h3 {{ font-weight: 700; }}
+
+    .brand-header {{
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding: 6px 0 18px 0;
+    }}
+    .brand-logo {{
+        font-size: 42px;
+        background: linear-gradient(135deg, #4c8bf5, #7c4cf5);
+        width: 60px; height: 60px;
+        border-radius: 16px;
+        display: flex; align-items: center; justify-content: center;
+    }}
+    .brand-title {{
+        font-size: 26px; font-weight: 800; margin: 0;
+        background: linear-gradient(135deg, #4c8bf5, #7c4cf5);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+    }}
+    .brand-subtitle {{ font-size: 13px; opacity: 0.7; margin: 0; }}
+
+    .score-card {{
         border-radius: 14px;
         padding: 22px;
         text-align: center;
         margin-bottom: 20px;
-    }
-    .score-number { font-size: 48px; font-weight: 800; margin: 0; }
-    .score-label { font-size: 14px; opacity: 0.85; margin-top: -6px; }
-    .skill-chip {
+    }}
+    .score-number {{ font-size: 48px; font-weight: 800; margin: 0; }}
+    .score-label {{ font-size: 14px; opacity: 0.85; margin-top: -6px; }}
+    .skill-chip {{
         display: inline-block;
         background-color: #3a1f1f;
         color: #ff8080;
@@ -36,22 +78,45 @@ st.markdown("""
         padding: 5px 14px;
         margin: 4px 6px 4px 0;
         font-size: 13px;
-    }
-    .suggestion-card {
-        background-color: #1a1d24;
+    }}
+    .suggestion-card {{
+        background-color: {card_bg};
         border-left: 4px solid #4c8bf5;
         border-radius: 8px;
         padding: 10px 16px;
         margin-bottom: 10px;
         font-size: 14px;
-    }
-    .auth-header {
+    }}
+    .opportunity-card {{
+        background-color: {card_bg};
+        border: 1px solid {border_color};
+        border-radius: 12px;
+        padding: 16px 20px;
+        margin-bottom: 14px;
+    }}
+    .preview-box {{
+        background-color: {card_bg};
+        border: 1px dashed {border_color};
+        border-radius: 10px;
+        padding: 14px 18px;
+        font-size: 13px;
+        opacity: 0.85;
+        max-height: 180px;
+        overflow-y: auto;
+        white-space: pre-wrap;
+    }}
+    .auth-header {{
         text-align: center;
         padding: 10px 0 20px 0;
-    }
-    .auth-emoji { font-size: 60px; }
-    .auth-title { font-size: 30px; font-weight: 800; margin: 4px 0 0 0; }
-    .auth-subtitle { font-size: 15px; opacity: 0.75; margin-top: 4px; }
+    }}
+    .auth-emoji {{ font-size: 60px; }}
+    .auth-title {{
+        font-size: 32px; font-weight: 800; margin: 4px 0 0 0;
+        background: linear-gradient(135deg, #4c8bf5, #7c4cf5);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+    }}
+    .auth-subtitle {{ font-size: 15px; opacity: 0.75; margin-top: 4px; }}
 </style>
 """, unsafe_allow_html=True)
 
@@ -87,6 +152,20 @@ def firebase_sign_in(email, password):
     payload = {"email": email, "password": password, "returnSecureToken": True}
     r = requests.post(url, data=payload)
     return r.json()
+
+
+def friendly_auth_error(error_msg):
+    mapping = {
+        "EMAIL_EXISTS": "This email is already registered. Try logging in instead.",
+        "INVALID_PASSWORD": "Incorrect password. Please try again.",
+        "EMAIL_NOT_FOUND": "No account found with this email. Try signing up.",
+        "INVALID_EMAIL": "That email address doesn't look valid.",
+        "WEAK_PASSWORD : Password should be at least 6 characters": "Password must be at least 6 characters.",
+    }
+    for key, friendly in mapping.items():
+        if key in error_msg:
+            return friendly
+    return "Something went wrong. Please try again."
 
 
 # ---------------- Resume Extraction Helpers ----------------
@@ -186,6 +265,43 @@ JOB DESCRIPTION:
     return json.loads(raw_output)
 
 
+def find_job_opportunities(resume_text):
+    prompt = f"""
+You are a global career advisor with knowledge of job markets worldwide (online and physical, across countries and industries).
+
+Based on the RESUME below, identify the best-fit industries/career paths for this person.
+
+Return ONLY a valid JSON object with this exact structure, no extra text before or after:
+{{
+  "opportunities": [
+    {{
+      "industry": "<industry or field name>",
+      "example_roles": [<2-3 example job titles>],
+      "likelihood_percent": <number from 0 to 100, your estimate of this person's chances of getting selected in this industry based on their current resume>,
+      "reasoning": "<one short sentence explaining why, based on their skills/experience>"
+    }}
+  ]
+}}
+
+Provide between 3 and 5 opportunities, ordered from highest to lowest likelihood_percent.
+
+RESUME:
+{resume_text}
+"""
+    response = groq_client.chat.completions.create(
+        model="openai/gpt-oss-120b",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.4,
+    )
+    raw_output = response.choices[0].message.content.strip()
+    if raw_output.startswith("```"):
+        raw_output = raw_output.strip("`")
+        if raw_output.startswith("json"):
+            raw_output = raw_output[4:]
+        raw_output = raw_output.strip()
+    return json.loads(raw_output)
+
+
 # ---------------- Firestore History Helpers ----------------
 def save_analysis_to_history(uid, job_description, result):
     doc = {
@@ -213,7 +329,7 @@ def get_user_history(uid):
 # ---------------- UI Helper Widgets ----------------
 def score_color(score):
     if score >= 70:
-        return "#1f6b3a", "#42d17a"   # bg, text
+        return "#1f6b3a", "#42d17a"
     elif score >= 40:
         return "#5c4a12", "#f5c542"
     else:
@@ -241,6 +357,35 @@ def render_skill_chips(skills):
 def render_suggestions(suggestions):
     for s in suggestions:
         st.markdown(f'<div class="suggestion-card">💡 {s}</div>', unsafe_allow_html=True)
+
+
+def render_opportunities(opportunities):
+    for opp in opportunities:
+        pct = opp.get("likelihood_percent", 0)
+        bg, fg = score_color(pct)
+        roles = ", ".join(opp.get("example_roles", []))
+        st.markdown(f"""
+        <div class="opportunity-card">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <h4 style="margin:0;">🌍 {opp.get('industry','')}</h4>
+                <span style="color:{fg}; font-weight:800; font-size:18px;">{pct}%</span>
+            </div>
+            <p style="margin:6px 0 4px 0; font-size:13px; opacity:0.85;">Example roles: {roles}</p>
+            <p style="margin:0; font-size:13px;">{opp.get('reasoning','')}</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+
+def render_resume_preview(uploaded_file, resume_text):
+    with st.expander("📄 Resume Preview"):
+        col1, col2 = st.columns(2)
+        with col1:
+            st.write(f"**File name:** {uploaded_file.name}")
+        with col2:
+            size_kb = uploaded_file.size / 1024
+            st.write(f"**Size:** {size_kb:.1f} KB")
+        preview_text = resume_text[:600] + ("..." if len(resume_text) > 600 else "")
+        st.markdown(f'<div class="preview-box">{preview_text}</div>', unsafe_allow_html=True)
 
 
 def result_to_text(job_description, result):
@@ -290,17 +435,25 @@ if "last_result" not in st.session_state:
     st.session_state.last_result = None
 if "last_job_description" not in st.session_state:
     st.session_state.last_job_description = ""
+if "current_resume_text" not in st.session_state:
+    st.session_state.current_resume_text = None
+if "current_resume_name" not in st.session_state:
+    st.session_state.current_resume_name = None
+if "opportunities_result" not in st.session_state:
+    st.session_state.opportunities_result = None
 
 
 def logout():
     st.session_state.user = None
     st.session_state.last_resume_text = None
     st.session_state.last_result = None
+    st.session_state.current_resume_text = None
+    st.session_state.opportunities_result = None
     st.rerun()
 
 
 def run_analysis(resume_text, job_description, uid):
-    with st.spinner("Analyzing your resume..."):
+    with st.spinner("🧠 Analyzing your resume with AI..."):
         result = analyze_resume(resume_text, job_description)
     st.session_state.last_resume_text = resume_text
     st.session_state.last_result = result
@@ -325,33 +478,35 @@ def show_auth_screen():
         password = st.text_input("Password", type="password", key="login_password")
         if st.button("Login", use_container_width=True):
             if not email or not password:
-                st.error("Please enter both email and password.")
+                st.error("⚠️ Please enter both email and password.")
             else:
-                result = firebase_sign_in(email, password)
+                with st.spinner("🔐 Signing you in..."):
+                    result = firebase_sign_in(email, password)
                 if "idToken" in result:
                     st.session_state.user = {"uid": result["localId"], "email": result["email"]}
                     st.rerun()
                 else:
-                    error_msg = result.get("error", {}).get("message", "Login failed.")
-                    st.error(f"Login failed: {error_msg}")
+                    error_msg = result.get("error", {}).get("message", "")
+                    st.error(f"❌ {friendly_auth_error(error_msg)}")
 
     with tab_signup:
         new_email = st.text_input("Email", key="signup_email")
         new_password = st.text_input("Password (min 6 characters)", type="password", key="signup_password")
         if st.button("Create Account", use_container_width=True):
             if not new_email or not new_password:
-                st.error("Please enter both email and password.")
+                st.error("⚠️ Please enter both email and password.")
             elif len(new_password) < 6:
-                st.error("Password must be at least 6 characters.")
+                st.error("⚠️ Password must be at least 6 characters.")
             else:
-                result = firebase_sign_up(new_email, new_password)
+                with st.spinner("✨ Creating your account..."):
+                    result = firebase_sign_up(new_email, new_password)
                 if "idToken" in result:
                     st.session_state.user = {"uid": result["localId"], "email": result["email"]}
-                    st.success("Account created successfully!")
+                    st.success("🎉 Account created successfully!")
                     st.rerun()
                 else:
-                    error_msg = result.get("error", {}).get("message", "Sign up failed.")
-                    st.error(f"Sign up failed: {error_msg}")
+                    error_msg = result.get("error", {}).get("message", "")
+                    st.error(f"❌ {friendly_auth_error(error_msg)}")
 
 
 # ---------------- Main App ----------------
@@ -361,12 +516,28 @@ def show_main_app():
     with st.sidebar:
         st.subheader("👤 Account")
         st.write(f"**Email:** {user['email']}")
-        st.caption("AI Job Applicant Agent helps you match your resume to any job description, spot missing skills, and get instant improvement tips.")
+        st.caption("AI Job Applicant Agent helps you match your resume to any job description, spot missing skills, and discover where you can apply worldwide.")
+
+        theme_choice = st.toggle("🌙 Dark Mode", value=(st.session_state.theme == "dark"))
+        new_theme = "dark" if theme_choice else "light"
+        if new_theme != st.session_state.theme:
+            st.session_state.theme = new_theme
+            st.rerun()
+
         if st.button("Logout", use_container_width=True):
             logout()
 
-    st.title("🧑‍💼 AI Job Applicant Agent")
-    st.write("Upload your resume and paste a job description. The AI will check your ATS score and missing skills.")
+    st.markdown("""
+    <div class="brand-header">
+        <div class="brand-logo">🧑‍💼</div>
+        <div>
+            <p class="brand-title">AI Job Applicant Agent</p>
+            <p class="brand-subtitle">Your personal AI career co-pilot</p>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.write("Upload your resume, then choose what you'd like to do.")
 
     tab_analyze, tab_history = st.tabs(["Analyze Resume", "History"])
 
@@ -375,67 +546,104 @@ def show_main_app():
             "Upload your Resume (PDF, DOCX, or Image)",
             type=["pdf", "docx", "png", "jpg", "jpeg", "webp"]
         )
-        job_description = st.text_area("Paste the Job Description here", height=220, key="jd_input")
 
-        if st.button("Analyze Resume", use_container_width=True):
-            if not groq_client:
-                st.error("Groq API key is not configured.")
-            elif not uploaded_file:
-                st.error("Please upload your resume.")
-            elif not job_description.strip():
-                st.error("Please paste a job description.")
+        if uploaded_file is not None:
+            file_id = f"{uploaded_file.name}_{uploaded_file.size}"
+            if st.session_state.current_resume_name != file_id:
+                with st.spinner("🔍 Reading your resume..."):
+                    text = extract_resume_text(uploaded_file)
+                st.session_state.current_resume_text = text
+                st.session_state.current_resume_name = file_id
+                st.session_state.last_result = None
+                st.session_state.opportunities_result = None
+
+            if st.session_state.current_resume_text and st.session_state.current_resume_text.strip():
+                render_resume_preview(uploaded_file, st.session_state.current_resume_text)
+
+        if st.session_state.current_resume_text and st.session_state.current_resume_text.strip():
+            mode = st.radio(
+                "What would you like to do?",
+                ["🎯 Check ATS Score", "🌍 Find Where I Can Apply"],
+                horizontal=True,
+            )
+
+            if mode == "🎯 Check ATS Score":
+                job_description = st.text_area("Paste the Job Description here", height=220, key="jd_input")
+
+                if st.button("Analyze Resume", use_container_width=True):
+                    if not groq_client:
+                        st.error("⚠️ Groq API key is not configured. Please contact the app owner.")
+                    elif not job_description.strip():
+                        st.error("⚠️ Please paste a job description first.")
+                    else:
+                        try:
+                            run_analysis(st.session_state.current_resume_text, job_description, user["uid"])
+                        except json.JSONDecodeError:
+                            st.error("😕 The AI response got garbled. Please try analyzing again.")
+                        except Exception as e:
+                            st.error(f"⚠️ Something went wrong: {e}")
+
+                if st.session_state.last_result:
+                    result = st.session_state.last_result
+                    st.divider()
+                    render_score(result["ats_score"])
+
+                    st.subheader("❌ Missing Skills")
+                    render_skill_chips(result["missing_skills"])
+
+                    st.subheader("💡 Suggestions")
+                    render_suggestions(result["suggestions"])
+
+                    st.write("")
+                    col1, col2, col3, col4 = st.columns(4)
+                    with col1:
+                        if st.button("👍 Like", use_container_width=True, key="like_btn"):
+                            st.toast("Thanks for your feedback!")
+                    with col2:
+                        if st.button("👎 Dislike", use_container_width=True, key="dislike_btn"):
+                            st.toast("Thanks — we'll keep improving!")
+                    with col3:
+                        copy_button(result_to_text(st.session_state.last_job_description, result), key="result")
+                    with col4:
+                        read_aloud_button(result_to_text(st.session_state.last_job_description, result), key="result")
+
+                    st.divider()
+                    with st.expander("✏️ Edit Job Description & Re-analyze (no need to re-upload resume)"):
+                        edited_jd = st.text_area(
+                            "Job Description",
+                            value=st.session_state.last_job_description,
+                            height=180,
+                            key="edit_jd"
+                        )
+                        if st.button("Re-analyze with edited description", use_container_width=True):
+                            try:
+                                run_analysis(st.session_state.current_resume_text, edited_jd, user["uid"])
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"⚠️ Something went wrong: {e}")
+
             else:
-                with st.spinner("Reading your resume..."):
-                    try:
-                        resume_text = extract_resume_text(uploaded_file)
-                        if not resume_text.strip():
-                            st.error("Could not extract any text from this file. Try a clearer scan or a different file.")
-                        else:
-                            run_analysis(resume_text, job_description, user["uid"])
-                    except json.JSONDecodeError:
-                        st.error("The AI response could not be read properly. Please try again.")
-                    except Exception as e:
-                        st.error(f"Something went wrong: {e}")
+                st.write("This finds industries and roles worldwide that match your resume, with an estimated chance of getting selected in each.")
+                if st.button("Find Opportunities", use_container_width=True):
+                    if not groq_client:
+                        st.error("⚠️ Groq API key is not configured. Please contact the app owner.")
+                    else:
+                        with st.spinner("🌍 Scanning global job markets for your profile..."):
+                            try:
+                                st.session_state.opportunities_result = find_job_opportunities(
+                                    st.session_state.current_resume_text
+                                )
+                            except json.JSONDecodeError:
+                                st.error("😕 The AI response got garbled. Please try again.")
+                            except Exception as e:
+                                st.error(f"⚠️ Something went wrong: {e}")
 
-        # ---- Show results if available ----
-        if st.session_state.last_result:
-            result = st.session_state.last_result
-            st.divider()
-            render_score(result["ats_score"])
-
-            st.subheader("❌ Missing Skills")
-            render_skill_chips(result["missing_skills"])
-
-            st.subheader("💡 Suggestions")
-            render_suggestions(result["suggestions"])
-
-            st.write("")
-            col1, col2, col3, col4 = st.columns(4)
-            with col1:
-                if st.button("👍 Like", use_container_width=True, key="like_btn"):
-                    st.toast("Thanks for your feedback!")
-            with col2:
-                if st.button("👎 Dislike", use_container_width=True, key="dislike_btn"):
-                    st.toast("Thanks — we'll keep improving!")
-            with col3:
-                copy_button(result_to_text(st.session_state.last_job_description, result), key="result")
-            with col4:
-                read_aloud_button(result_to_text(st.session_state.last_job_description, result), key="result")
-
-            st.divider()
-            with st.expander("✏️ Edit Job Description & Re-analyze (no need to re-upload resume)"):
-                edited_jd = st.text_area(
-                    "Job Description",
-                    value=st.session_state.last_job_description,
-                    height=180,
-                    key="edit_jd"
-                )
-                if st.button("Re-analyze with edited description", use_container_width=True):
-                    try:
-                        run_analysis(st.session_state.last_resume_text, edited_jd, user["uid"])
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Something went wrong: {e}")
+                if st.session_state.opportunities_result:
+                    st.divider()
+                    st.subheader("🌍 Where You Can Apply")
+                    render_opportunities(st.session_state.opportunities_result["opportunities"])
+        elif uploaded_file is not None:
+            st.warning("😕 Couldn't read any text from this file. Try a clearer scan or a different format.")
 
     with tab_history:
         st.subheader("📜 Your Past Analyses")
