@@ -267,9 +267,9 @@ JOB DESCRIPTION:
 
 def find_job_opportunities(resume_text):
     prompt = f"""
-You are a global career advisor with knowledge of job markets worldwide (online and physical, across countries and industries).
+You are a global career advisor with knowledge of job markets worldwide (online and physical, across countries and industries), with special expertise in the Pakistani tech and job market.
 
-Based on the RESUME below, identify the best-fit industries/career paths for this person.
+Based on the RESUME below, identify ALL industries/career paths that genuinely fit this person's skills and experience — do not limit yourself to a fixed number, include every relevant option.
 
 Return ONLY a valid JSON object with this exact structure, no extra text before or after:
 {{
@@ -278,12 +278,13 @@ Return ONLY a valid JSON object with this exact structure, no extra text before 
       "industry": "<industry or field name>",
       "example_roles": [<2-3 example job titles>],
       "likelihood_percent": <number from 0 to 100, your estimate of this person's chances of getting selected in this industry based on their current resume>,
-      "reasoning": "<one short sentence explaining why, based on their skills/experience>"
+      "reasoning": "<one short sentence explaining why, based on their skills/experience>",
+      "example_companies_pakistan": [<2-4 real, well-known Pakistani companies or software houses that hire for this field, e.g. Systems Limited, NetSol, Techlogix, Arbisoft, 10Pearls, Folio3, Devsinc, Confiz, etc. — pick ones genuinely relevant to this industry>]
     }}
   ]
 }}
 
-Provide between 3 and 5 opportunities, ordered from highest to lowest likelihood_percent.
+List every industry that is a reasonable fit, ordered from highest to lowest likelihood_percent. Do not artificially cap the list — if 7 or 8 industries genuinely fit, list all of them.
 
 RESUME:
 {resume_text}
@@ -364,6 +365,10 @@ def render_opportunities(opportunities):
         pct = opp.get("likelihood_percent", 0)
         bg, fg = score_color(pct)
         roles = ", ".join(opp.get("example_roles", []))
+        companies = opp.get("example_companies_pakistan", [])
+        company_links = ", ".join(
+            [f'<a href="https://www.google.com/search?q={c.replace(" ", "+")}+official+website" target="_blank" style="color:{fg};">{c}</a>' for c in companies]
+        )
         st.markdown(f"""
         <div class="opportunity-card">
             <div style="display:flex; justify-content:space-between; align-items:center;">
@@ -371,7 +376,8 @@ def render_opportunities(opportunities):
                 <span style="color:{fg}; font-weight:800; font-size:18px;">{pct}%</span>
             </div>
             <p style="margin:6px 0 4px 0; font-size:13px; opacity:0.85;">Example roles: {roles}</p>
-            <p style="margin:0; font-size:13px;">{opp.get('reasoning','')}</p>
+            <p style="margin:0 0 6px 0; font-size:13px;">{opp.get('reasoning','')}</p>
+            <p style="margin:0; font-size:13px; opacity:0.85;">🇵🇰 Companies in Pakistan: {company_links}</p>
         </div>
         """, unsafe_allow_html=True)
 
