@@ -36,9 +36,36 @@ st.markdown(f"""
 
     html, body, [class*="css"] {{ font-family: 'Poppins', sans-serif; }}
 
-    .stApp {{ background-color: {bg_color}; color: {text_color}; }}
-    h1, h2, h3, p, span, label, div {{ color: {text_color}; }}
+    .stApp, [data-testid="stAppViewContainer"], [data-testid="stHeader"] {{
+        background-color: {bg_color} !important;
+        color: {text_color} !important;
+    }}
+    [data-testid="stSidebar"] {{
+        background-color: {card_bg} !important;
+    }}
+    h1, h2, h3, p, span, label, div {{ color: {text_color} !important; }}
     h1, h2, h3 {{ font-weight: 700; }}
+
+    .stButton>button {{
+        background-color: {card_bg} !important;
+        color: {text_color} !important;
+        border: 1px solid {border_color} !important;
+    }}
+    .stTextInput>div>div>input, .stTextArea textarea {{
+        background-color: {card_bg} !important;
+        color: {text_color} !important;
+        border: 1px solid {border_color} !important;
+    }}
+    .stTabs [data-baseweb="tab"] {{
+        color: {text_color} !important;
+    }}
+    [data-testid="stExpander"] {{
+        background-color: {card_bg} !important;
+        border: 1px solid {border_color} !important;
+    }}
+    [data-testid="stFileUploader"] {{
+        background-color: {card_bg} !important;
+    }}
 
     .brand-header {{
         display: flex;
