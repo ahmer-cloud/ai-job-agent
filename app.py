@@ -76,6 +76,14 @@ st.markdown(f"""
         background-color: {card_bg} !important;
         color: {text_color} !important;
     }}
+    [data-testid="stFileUploaderDropzone"] {{
+        border: 2px dashed {border_color} !important;
+        border-radius: 12px !important;
+    }}
+    [data-testid="stFileUploaderFile"] {{
+        border: 1px solid {border_color} !important;
+        border-radius: 10px !important;
+    }}
 
     .brand-header {{
         display: flex;
@@ -154,6 +162,15 @@ st.markdown(f"""
         -webkit-text-fill-color: transparent;
     }}
     .auth-subtitle {{ font-size: 15px; opacity: 0.75; margin-top: 4px; }}
+
+    [data-testid="stRadio"] div[role="radiogroup"] label > div:first-child {{
+        background-color: #ffffff !important;
+        border: 2px solid #4c8bf5 !important;
+        border-radius: 50% !important;
+    }}
+    [data-testid="stRadio"] div[role="radiogroup"] label > div:first-child > div {{
+        background-color: #4c8bf5 !important;
+    }}
 </style>
 """, unsafe_allow_html=True)
 
