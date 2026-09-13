@@ -69,8 +69,12 @@ st.markdown(f"""
         background-color: {card_bg} !important;
         border: 1px solid {border_color} !important;
     }}
-    [data-testid="stFileUploader"] {{
+    [data-testid="stFileUploader"],
+    [data-testid="stFileUploaderDropzone"],
+    [data-testid="stFileUploaderDropzone"] *,
+    [data-testid="stFileUploaderFile"] {{
         background-color: {card_bg} !important;
+        color: {text_color} !important;
     }}
 
     .brand-header {{
