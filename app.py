@@ -12,7 +12,7 @@ from groq import Groq
 import firebase_admin
 from firebase_admin import credentials, firestore
 
-st.set_page_config(page_title="AI Job Applicant Agent", page_icon="🧑‍💼", layout="centered")
+st.set_page_config(page_title="AI Job Applicant Agent", page_icon="💼", layout="centered")
 
 # ---------------- Session State (theme must be set before CSS) ----------------
 if "theme" not in st.session_state:
@@ -24,11 +24,17 @@ if st.session_state.theme == "dark":
     text_color = "#f0f0f0"
     card_bg = "#1a1d24"
     border_color = "#3a3d46"
+    chip_bg = "#3a1f1f"
+    chip_text = "#ff8080"
+    chip_border = "#6b2b2b"
 else:
     bg_color = "#ffffff"
     text_color = "#1a1a1a"
     card_bg = "#f5f5f7"
     border_color = "#d0d0d5"
+    chip_bg = "#ffe0e0"
+    chip_text = "#a11212"
+    chip_border = "#e5a3a3"
 
 st.markdown(f"""
 <style>
@@ -74,7 +80,7 @@ st.markdown(f"""
         padding: 6px 0 18px 0;
     }}
     .brand-logo {{
-        font-size: 42px;
+        font-size: 30px;
         background: linear-gradient(135deg, #4c8bf5, #7c4cf5);
         width: 60px; height: 60px;
         border-radius: 16px;
@@ -98,9 +104,9 @@ st.markdown(f"""
     .score-label {{ font-size: 14px; opacity: 0.85; margin-top: -6px; }}
     .skill-chip {{
         display: inline-block;
-        background-color: #3a1f1f;
-        color: #ff8080;
-        border: 1px solid #6b2b2b;
+        background-color: {chip_bg};
+        color: {chip_text};
+        border: 1px solid {chip_border};
         border-radius: 20px;
         padding: 5px 14px;
         margin: 4px 6px 4px 0;
@@ -136,7 +142,7 @@ st.markdown(f"""
         text-align: center;
         padding: 10px 0 20px 0;
     }}
-    .auth-emoji {{ font-size: 60px; }}
+    .auth-emoji {{ font-size: 50px; }}
     .auth-title {{
         font-size: 32px; font-weight: 800; margin: 4px 0 0 0;
         background: linear-gradient(135deg, #4c8bf5, #7c4cf5);
@@ -498,7 +504,7 @@ def run_analysis(resume_text, job_description, uid):
 def show_auth_screen():
     st.markdown("""
     <div class="auth-header">
-        <div class="auth-emoji">🧑‍💼✨</div>
+        <div class="auth-emoji">💼</div>
         <p class="auth-title">AI Job Applicant Agent</p>
         <p class="auth-subtitle">Land your next job faster — check your resume against any job in seconds.</p>
     </div>
@@ -562,7 +568,7 @@ def show_main_app():
 
     st.markdown("""
     <div class="brand-header">
-        <div class="brand-logo">🧑‍💼</div>
+        <div class="brand-logo">💼</div>
         <div>
             <p class="brand-title">AI Job Applicant Agent</p>
             <p class="brand-subtitle">Your personal AI career co-pilot</p>
